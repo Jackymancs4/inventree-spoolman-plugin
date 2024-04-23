@@ -9,12 +9,9 @@ requires-python = ">=3.8"
 classifiers = [
     "License :: OSI Approved :: Apache Software License"
 ]
-dependencies = [
-    "click"
-]
 
-[project.entry-points.console_scripts]
-inventree-spoolman-plugin = "inventree_spoolman_plugin.cli:cli"
+[project.entry-points."inventree_plugins"]
+inventree-spoolman-plugin = "inventree_spoolman_plugin.SpoolmanPlugin"
 
 [project.optional-dependencies]
 test = ["pytest"]
