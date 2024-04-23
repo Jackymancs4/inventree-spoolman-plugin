@@ -11,7 +11,7 @@ classifiers = [
 ]
 
 [project.entry-points."inventree_plugins"]
-inventree-spoolman-plugin = "inventree_spoolman_plugin.spoolman:SpoolmanPlugin"
+inventree-spoolman-plugin = "inventree_spoolman_plugin:spoolman.SpoolmanPlugin"
 
 [project.optional-dependencies]
 test = ["pytest"]
