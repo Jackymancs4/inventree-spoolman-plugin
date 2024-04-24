@@ -18,7 +18,7 @@ authors = [{ name = "Jackymancs4" }]
 Homepage = "https://github.com/Jackymancs4/inventree-spoolman-plugin"
 
 [project.entry-points."inventree_plugins"]
-inventree-spoolman-plugin = "inventree_spoolman_plugin.SpoolmanPlugin"
+inventree-spoolman-plugin = "inventree_spoolman_plugin:spoolman.SpoolmanPlugin"
 
 [tool.isort]
 line_length = 96
