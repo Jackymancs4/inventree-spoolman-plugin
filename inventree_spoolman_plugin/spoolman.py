@@ -21,8 +21,12 @@ class SpoolmanPlugin(ActionMixin, APICallMixin, SettingsMixin, InvenTreePlugin):
     """An action plugin which offers variuous integrations with Spoolman."""
 
     NAME = "SpoolmanPlugin"
-    SLUG = "spoolman"
-    ACTION_NAME = "spoolman"
+    SLUG = "spoolmanplugin"
+    TITLE = "Spoolman Integration"
+    DESCRIPTION = ("Spoolman integration for InvenTree")
+    VERSION = "0.2"
+    AUTHOR = "Jackymancs4"
+    LICENSE = "MIT"
 
     SETTINGS = {
         "API_URL": {
@@ -32,52 +36,52 @@ class SpoolmanPlugin(ActionMixin, APICallMixin, SettingsMixin, InvenTreePlugin):
         },
         "FILAMENT_CATEGORY_ID": {
             "name": "Category for filament parts",
-            "description": "Where is your API located?",
+            "description": "Generic description",
             "model": "part.partcategory",
         },
         "MATERIAL_PART_PARAMETER_ID": {
             "name": "Material Part Parameter",
-            "description": "Where is your API located?",
+            "description": "Generic description",
             "model": "part.partparametertemplate",
         },
         "DENSITY_PART_PARAMETER_ID": {
             "name": "Density Part Parameter",
-            "description": "Where is your API located?",
+            "description": "Generic description",
             "model": "part.partparametertemplate",
         },
         "DIAMETER_PART_PARAMETER_ID": {
-            "name": "External URL",
-            "description": "Where is your API located?",
+            "name": "Diameter Part Parameter",
+            "description": "Generic description",
             "model": "part.partparametertemplate",
         },
         "SPOOL_WEIGHT_PART_PARAMETER_ID": {
-            "name": "External URL",
-            "description": "Where is your API located?",
+            "name": "Spool weight Part Parameter",
+            "description": "Generic description",
             "model": "part.partparametertemplate",
         },
         "MIN_EXTRUDER_TEMP_PART_PARAMETER_ID": {
-            "name": "External URL",
-            "description": "Where is your API located?",
+            "name": "Min extruder temp Part Parameter",
+            "description": "Generic description",
             "model": "part.partparametertemplate",
         },
         "MAX_EXTRUDER_TEMP_PART_PARAMETER_ID": {
-            "name": "External URL",
-            "description": "Where is your API located?",
+            "name": "Max extruder temp Part Parameter",
+            "description": "Generic description",
             "model": "part.partparametertemplate",
         },
         "MIN_BED_TEMP_PART_PARAMETER_ID": {
-            "name": "External URL",
-            "description": "Where is your API located?",
+            "name": "Min bed temp Part Parameter",
+            "description": "Generic description",
             "model": "part.partparametertemplate",
         },
         "MAX_BED_TEMP_PART_PARAMETER_ID": {
-            "name": "External URL",
-            "description": "Where is your API located?",
+            "name": "Max bed temp Part Parameter",
+            "description": "Generic description",
             "model": "part.partparametertemplate",
         },
         "COLOR_PART_PARAMETER_ID": {
-            "name": "External URL",
-            "description": "Where is your API located?",
+            "name": "Hexadecimal Color Part Parameter",
+            "description": "Generic description",
             "model": "part.partparametertemplate",
         },
     }
@@ -173,186 +177,113 @@ class SpoolmanPlugin(ActionMixin, APICallMixin, SettingsMixin, InvenTreePlugin):
             )[0]
             self.set_setting("COLOR_PART_PARAMETER_ID", parameter_template.pk)
 
-    def process_spool(self, spool, category):
+    def get_supplier(self, spool:dict) -> (Company | None):
+        """_summary_
 
+        Args:
+            spool (_type_): _description_
+        """
         supplier_name = None
         supplier = None
 
-        # ottieni il supplier
+        # Get the supplier if there is one
         if "vendor" in spool["filament"]:
-            supplier_name = spool["filament"]["vendor"]["name"]
-            supplier = Company.objects.get_or_create(
-                name=supplier_name,
-            )[0]
 
-            supplier.notes = (
-                spool["filament"]["vendor"]["comment"]
-                if "comment" in spool["filament"]["vendor"]
-                else ""
+            vendor_id = spool["filament"]["vendor"]["id"]
+
+            supplier = Company.objects.filter(metadata__spoolman_id=vendor_id).first()
+
+            if not supplier:
+                supplier_name = spool["filament"]["vendor"]["name"]
+                supplier = Company.objects.get_or_create(
+                    name=supplier_name,
+                )[0]
+
+                supplier.metadata["spoolman_id"] = vendor_id
+
+                supplier.notes = (
+                    spool["filament"]["vendor"]["comment"]
+                    if "comment" in spool["filament"]["vendor"]
+                    else ""
+                )
+
+                supplier.save()
+
+        return supplier
+
+    def upsert_parameter(self, spool, part, setting_key, filament_key):
+        """_summary_
+
+        Args:
+            spool (dict): _description_
+            part (Part): _description_
+            setting_key (str): _description_
+            filament_key (str): _description_
+        """
+
+        parameter_template_pk = self.get_setting(setting_key)
+
+        if filament_key in spool["filament"] and parameter_template_pk:
+
+            parameter_template = PartParameterTemplate.objects.get(
+                pk=parameter_template_pk
             )
 
-            supplier.save()
+            PartParameter.objects.get_or_create(
+                part=part,
+                template=parameter_template,
+                data=spool["filament"][filament_key],
+            )[0]
 
-        # se non presente lo crei
+    def process_spool(self, spool, category):
+        """Process a single spool object
 
-        # ottieni il filamento
-        if supplier_name:
-            part_name = supplier_name + " " + spool["filament"]["name"]
-        else:
-            part_name = spool["filament"]["name"]
+        Args:
+            spool (dict): _description_
+            category (PartCategory): _description_
+        """
+        
+        supplier = self.get_supplier(spool)
 
         part = Part.objects.filter(
             metadata__contains=[{"spoolman_id": spool["filament"]["id"]}]
         ).first()
 
         if not part:
-            print("Filament not found by ID")
+            logger.debug("Filament not found by ID: " + str(spool["filament"]["id"]))
+
+            if supplier:
+                part_name = supplier.name + " " + spool["filament"]["name"]
+            else:
+                part_name = spool["filament"]["name"]
 
             part = Part.objects.get_or_create(
                 name=part_name,
                 category=category,
             )[0]
 
-        part.metadata["spoolman_id"] = spool["filament"]["id"]
+            part.metadata["spoolman_id"] = spool["filament"]["id"]
 
-        part.notes = (
-            spool["filament"]["comment"] if "comment" in spool["filament"] else ""
-        )
-        part.units = "g"
-        part.component = True
-
-        part.save()
-
-        parameter_template_pk = self.get_setting("MATERIAL_PART_PARAMETER_ID")
-
-        if "material" in spool["filament"] and parameter_template_pk:
-
-            parameter_template = PartParameterTemplate.objects.get(
-                pk=parameter_template_pk
+            part.notes = (
+                spool["filament"]["comment"] if "comment" in spool["filament"] else ""
             )
+            part.units = "g"
+            part.component = True
 
-            PartParameter.objects.get_or_create(
-                part=part,
-                template=parameter_template,
-                data=spool["filament"]["material"],
-            )[0]
+            part.save()
 
-        parameter_template_pk = self.get_setting("DENSITY_PART_PARAMETER_ID")
+        self.upsert_parameter(spool, part, "MATERIAL_PART_PARAMETER_ID", "material")
+        self.upsert_parameter(spool, part, "DENSITY_PART_PARAMETER_ID", "density")
+        self.upsert_parameter(spool, part, "DIAMETER_PART_PARAMETER_ID", "diameter")
+        self.upsert_parameter(spool, part, "SPOOL_WEIGHT_PART_PARAMETER_ID", "spool_weight")
+        self.upsert_parameter(spool, part, "MIN_EXTRUDER_TEMP_PART_PARAMETER_ID", "settings_extruder_temp")
+        self.upsert_parameter(spool, part, "MAX_EXTRUDER_TEMP_PART_PARAMETER_ID", "settings_extruder_temp")
+        self.upsert_parameter(spool, part, "MIN_BED_TEMP_PART_PARAMETER_ID", "settings_bed_temp")
+        self.upsert_parameter(spool, part, "MAX_BED_TEMP_PART_PARAMETER_ID", "settings_bed_temp")
+        self.upsert_parameter(spool, part, "COLOR_PART_PARAMETER_ID", "color_hex")
 
-        if "density" in spool["filament"] and parameter_template_pk:
-
-            parameter_template = PartParameterTemplate.objects.get(
-                pk=parameter_template_pk
-            )
-
-            PartParameter.objects.get_or_create(
-                part=part,
-                template=parameter_template,
-                data=spool["filament"]["density"],
-            )[0]
-
-        parameter_template_pk = self.get_setting("DIAMETER_PART_PARAMETER_ID")
-
-        if "diameter" in spool["filament"] and parameter_template_pk:
-
-            parameter_template = PartParameterTemplate.objects.get(
-                pk=parameter_template_pk
-            )
-
-            PartParameter.objects.get_or_create(
-                part=part,
-                template=parameter_template,
-                data=spool["filament"]["diameter"],
-            )[0]
-
-        parameter_template_pk = self.get_setting("SPOOL_WEIGHT_PART_PARAMETER_ID")
-
-        if "spool_weight" in spool["filament"] and parameter_template_pk:
-
-            parameter_template = PartParameterTemplate.objects.get(
-                pk=parameter_template_pk
-            )
-
-            PartParameter.objects.get_or_create(
-                part=part,
-                template=parameter_template,
-                data=spool["filament"]["spool_weight"],
-            )[0]
-
-        parameter_template_pk = self.get_setting("MIN_EXTRUDER_TEMP_PART_PARAMETER_ID")
-
-        if "settings_extruder_temp" in spool["filament"] and parameter_template_pk:
-
-            parameter_template = PartParameterTemplate.objects.get(
-                pk=parameter_template_pk
-            )
-
-            PartParameter.objects.get_or_create(
-                part=part,
-                template=parameter_template,
-                data=spool["filament"]["settings_extruder_temp"],
-            )[0]
-
-        parameter_template_pk = self.get_setting("MAX_EXTRUDER_TEMP_PART_PARAMETER_ID")
-
-        if "settings_extruder_temp" in spool["filament"] and parameter_template_pk:
-
-            parameter_template = PartParameterTemplate.objects.get(
-                pk=parameter_template_pk
-            )
-
-            PartParameter.objects.get_or_create(
-                part=part,
-                template=parameter_template,
-                data=spool["filament"]["settings_extruder_temp"],
-            )[0]
-
-        parameter_template_pk = self.get_setting("MIN_BED_TEMP_PART_PARAMETER_ID")
-
-        if "settings_bed_temp" in spool["filament"] and parameter_template_pk:
-
-            parameter_template = PartParameterTemplate.objects.get(
-                pk=parameter_template_pk
-            )
-
-            PartParameter.objects.get_or_create(
-                part=part,
-                template=parameter_template,
-                data=spool["filament"]["settings_bed_temp"],
-            )[0]
-
-        parameter_template_pk = self.get_setting("MAX_BED_TEMP_PART_PARAMETER_ID")
-
-        if "settings_bed_temp" in spool["filament"] and parameter_template_pk:
-
-            parameter_template = PartParameterTemplate.objects.get(
-                pk=parameter_template_pk
-            )
-
-            PartParameter.objects.get_or_create(
-                part=part,
-                template=parameter_template,
-                data=spool["filament"]["settings_bed_temp"],
-            )[0]
-
-        parameter_template_pk = self.get_setting("COLOR_PART_PARAMETER_ID")
-
-        if "color_hex" in spool["filament"] and parameter_template_pk:
-
-            parameter_template = PartParameterTemplate.objects.get(
-                pk=parameter_template_pk
-            )
-
-            PartParameter.objects.get_or_create(
-                part=part,
-                template=parameter_template,
-                data=spool["filament"]["color_hex"],
-            )[0]
-
-        # se non presente lo crei
-
-        # colleghi il filamento al supplier
-        if supplier != None:
+        # link filament to supplier
+        if supplier:
             supplier_part = SupplierPart.objects.get_or_create(
                 part=part,
                 supplier=supplier,
@@ -378,33 +309,50 @@ class SpoolmanPlugin(ActionMixin, APICallMixin, SettingsMixin, InvenTreePlugin):
 
                 supplier_price_break.save()
 
-        # crei la giacenza
-        stock = StockItem.objects.get_or_create(part=part, batch=spool["lot_nr"])[0]
+        # Retrieve or create stock
+        stock = StockItem.objects.filter(metadata__spoolman_id=spool["id"]).first()
+
+        if not stock:
+            stock = StockItem.objects.get_or_create(part=part, batch=spool["lot_nr"])[0]
+            stock.metadata["spoolman_id"] = spool["id"]
 
         stock.updateQuantity(spool["remaining_weight"])
 
     def clear_metadata(self):
+        """_summary_
+        """
         parts = Part.objects.filter(metadata__icontains="spoolman_id")
 
         for part in parts:
-            print("Spoolman part found: " + str(part.pk))
+            logger.debug("Spoolman part found: " + str(part.pk))
 
             part.metadata.pop("spoolman_id")
             part.save()
 
     def perform_action(self, user=None, data=None):
+        """_summary_
 
+        Args:
+            user (_type_, optional): _description_. Defaults to None.
+            data (_type_, optional): _description_. Defaults to None.
+
+        Raises:
+            NotImplementedError: _description_
+            NotImplementedError: _description_
+            NotImplementedError: _description_
+
+        Returns:
+            _type_: _description_
+        """
         initial_response = self.api_call("api/v1/info", simple_response=False)
 
         if initial_response.status_code != 200:
             self.result = {"error"}
             return False
 
-        print(str(data))
-
         command = data.get("command")
 
-        if command == "import":
+        if command == "import_all":
 
             filaments_response = self.api_call("api/v1/spool")
 
@@ -422,6 +370,15 @@ class SpoolmanPlugin(ActionMixin, APICallMixin, SettingsMixin, InvenTreePlugin):
 
                 print("Imported spool " + str(spool["id"]))
 
+        elif command == "import_quantity":
+            raise NotImplementedError
+
+        elif command == "export_all":
+            raise NotImplementedError
+
+        elif command == "export_quantity":
+            raise NotImplementedError
+
         elif command == "create_part_parameter_templates":
             self.create_part_parameters()
 
@@ -430,11 +387,3 @@ class SpoolmanPlugin(ActionMixin, APICallMixin, SettingsMixin, InvenTreePlugin):
 
         else:
             self.result = {"error"}
-
-    def get_info(self, user, data=None):
-        """Sample method."""
-        return {"user": user.username, "hello": "world"}
-
-    def get_result(self, user=None, data=None):
-        """Sample method."""
-        return self.result
