@@ -11,6 +11,7 @@ from part.models import (
     PartCategory,
     PartParameterTemplate,
     PartParameter,
+    PartCategoryParameterTemplate,
 )
 from stock.models import StockItem
 
@@ -23,8 +24,7 @@ class SpoolmanPlugin(ActionMixin, APICallMixin, SettingsMixin, InvenTreePlugin):
     NAME = "SpoolmanPlugin"
     SLUG = "spoolmanplugin"
     TITLE = "Spoolman Integration"
-    DESCRIPTION = ("Spoolman integration for InvenTree")
-    VERSION = "0.2"
+    DESCRIPTION = "Spoolman integration for InvenTree"
     AUTHOR = "Jackymancs4"
     LICENSE = "MIT"
 
@@ -95,89 +95,59 @@ class SpoolmanPlugin(ActionMixin, APICallMixin, SettingsMixin, InvenTreePlugin):
         """Base url path."""
         return f"{self.get_setting(self.API_URL_SETTING)}"
 
-    def create_part_parameters(self):
+    def create_part_parameters(self, category: PartCategory | None):
         """Add all the part parameters not already set through the settings"""
 
-        parameter_template_pk = False
-        parameter_template = None
+        self.init_parameter_template(
+            "MATERIAL_PART_PARAMETER_ID", "Material", None, category
+        )
+        self.init_parameter_template(
+            "DENSITY_PART_PARAMETER_ID", "Density", "gram / centimeter ** 3", category
+        )
+        self.init_parameter_template(
+            "DIAMETER_PART_PARAMETER_ID", "Diameter", "mm", category
+        )
+        self.init_parameter_template(
+            "SPOOL_WEIGHT_PART_PARAMETER_ID", "Spool Weight", "g", category
+        )
+        self.init_parameter_template(
+            "MIN_EXTRUDER_TEMP_PART_PARAMETER_ID", "Min Ext temp", "degC", category
+        )
+        self.init_parameter_template(
+            "MAX_EXTRUDER_TEMP_PART_PARAMETER_ID", "Max Ext temp", "degC", category
+        )
+        self.init_parameter_template(
+            "MIN_BED_TEMP_PART_PARAMETER_ID", "Min Bed temp", "degC", category
+        )
+        self.init_parameter_template(
+            "MAX_BED_TEMP_PART_PARAMETER_ID", "Max Bed temp", "degC", category
+        )
+        self.init_parameter_template(
+            "COLOR_PART_PARAMETER_ID", "Hex Color", None, category
+        )
 
-        parameter_template_pk = self.get_setting("MATERIAL_PART_PARAMETER_ID")
-
-        if not parameter_template_pk:
-            parameter_template = PartParameterTemplate.objects.get_or_create(
-                name="Material"
-            )[0]
-            self.set_setting("MATERIAL_PART_PARAMETER_ID", parameter_template.pk)
-
-        parameter_template_pk = self.get_setting("DENSITY_PART_PARAMETER_ID")
-
-        if not parameter_template_pk:
-            parameter_template = PartParameterTemplate.objects.get_or_create(
-                name="Density", units="gram / centimeter ** 3"
-            )[0]
-            self.set_setting("DENSITY_PART_PARAMETER_ID", parameter_template.pk)
-
-        parameter_template_pk = self.get_setting("DIAMETER_PART_PARAMETER_ID")
-
-        if not parameter_template_pk:
-            parameter_template = PartParameterTemplate.objects.get_or_create(
-                name="Diameter", units="mm"
-            )[0]
-            self.set_setting("DIAMETER_PART_PARAMETER_ID", parameter_template.pk)
-
-        parameter_template_pk = self.get_setting("SPOOL_WEIGHT_PART_PARAMETER_ID")
-
-        if not parameter_template_pk:
-            parameter_template = PartParameterTemplate.objects.get_or_create(
-                name="Spool Weight", units="g"
-            )[0]
-            self.set_setting("SPOOL_WEIGHT_PART_PARAMETER_ID", parameter_template.pk)
-
-        parameter_template_pk = self.get_setting("MIN_EXTRUDER_TEMP_PART_PARAMETER_ID")
-
-        if not parameter_template_pk:
-            parameter_template = PartParameterTemplate.objects.get_or_create(
-                name="Min Ext temp", units="degC"
-            )[0]
-            self.set_setting(
-                "MIN_EXTRUDER_TEMP_PART_PARAMETER_ID", parameter_template.pk
-            )
-
-        parameter_template_pk = self.get_setting("MAX_EXTRUDER_TEMP_PART_PARAMETER_ID")
+    def init_parameter_template(
+        self,
+        setting_name: str,
+        name: str,
+        units: str | None,
+        category: PartCategory | None,
+    ):
+        parameter_template_pk = self.get_setting(setting_name)
 
         if not parameter_template_pk:
             parameter_template = PartParameterTemplate.objects.get_or_create(
-                name="Max Ext temp", units="degC"
+                name=name, units=units
             )[0]
-            self.set_setting(
-                "MAX_EXTRUDER_TEMP_PART_PARAMETER_ID", parameter_template.pk
-            )
+            self.set_setting(setting_name, parameter_template.pk)
 
-        parameter_template_pk = self.get_setting("MIN_BED_TEMP_PART_PARAMETER_ID")
+            if category:
+                PartCategoryParameterTemplate.objects.get_or_create(
+                    category=category,
+                    parameter_template=parameter_template,
+                )
 
-        if not parameter_template_pk:
-            parameter_template = PartParameterTemplate.objects.get_or_create(
-                name="Min Bed temp", units="degC"
-            )[0]
-            self.set_setting("MIN_BED_TEMP_PART_PARAMETER_ID", parameter_template.pk)
-
-        parameter_template_pk = self.get_setting("MAX_BED_TEMP_PART_PARAMETER_ID")
-
-        if not parameter_template_pk:
-            parameter_template = PartParameterTemplate.objects.get_or_create(
-                name="Max Bed temp", units="degC"
-            )[0]
-            self.set_setting("MAX_BED_TEMP_PART_PARAMETER_ID", parameter_template.pk)
-
-        parameter_template_pk = self.get_setting("COLOR_PART_PARAMETER_ID")
-
-        if not parameter_template_pk:
-            parameter_template = PartParameterTemplate.objects.get_or_create(
-                name="Hex Color"
-            )[0]
-            self.set_setting("COLOR_PART_PARAMETER_ID", parameter_template.pk)
-
-    def get_supplier(self, spool:dict) -> (Company | None):
+    def get_supplier(self, spool: dict) -> Company | None:
         """_summary_
 
         Args:
@@ -242,7 +212,7 @@ class SpoolmanPlugin(ActionMixin, APICallMixin, SettingsMixin, InvenTreePlugin):
             spool (dict): _description_
             category (PartCategory): _description_
         """
-        
+
         supplier = self.get_supplier(spool)
 
         part = Part.objects.filter(
@@ -275,11 +245,21 @@ class SpoolmanPlugin(ActionMixin, APICallMixin, SettingsMixin, InvenTreePlugin):
         self.upsert_parameter(spool, part, "MATERIAL_PART_PARAMETER_ID", "material")
         self.upsert_parameter(spool, part, "DENSITY_PART_PARAMETER_ID", "density")
         self.upsert_parameter(spool, part, "DIAMETER_PART_PARAMETER_ID", "diameter")
-        self.upsert_parameter(spool, part, "SPOOL_WEIGHT_PART_PARAMETER_ID", "spool_weight")
-        self.upsert_parameter(spool, part, "MIN_EXTRUDER_TEMP_PART_PARAMETER_ID", "settings_extruder_temp")
-        self.upsert_parameter(spool, part, "MAX_EXTRUDER_TEMP_PART_PARAMETER_ID", "settings_extruder_temp")
-        self.upsert_parameter(spool, part, "MIN_BED_TEMP_PART_PARAMETER_ID", "settings_bed_temp")
-        self.upsert_parameter(spool, part, "MAX_BED_TEMP_PART_PARAMETER_ID", "settings_bed_temp")
+        self.upsert_parameter(
+            spool, part, "SPOOL_WEIGHT_PART_PARAMETER_ID", "spool_weight"
+        )
+        self.upsert_parameter(
+            spool, part, "MIN_EXTRUDER_TEMP_PART_PARAMETER_ID", "settings_extruder_temp"
+        )
+        self.upsert_parameter(
+            spool, part, "MAX_EXTRUDER_TEMP_PART_PARAMETER_ID", "settings_extruder_temp"
+        )
+        self.upsert_parameter(
+            spool, part, "MIN_BED_TEMP_PART_PARAMETER_ID", "settings_bed_temp"
+        )
+        self.upsert_parameter(
+            spool, part, "MAX_BED_TEMP_PART_PARAMETER_ID", "settings_bed_temp"
+        )
         self.upsert_parameter(spool, part, "COLOR_PART_PARAMETER_ID", "color_hex")
 
         # link filament to supplier
@@ -319,8 +299,7 @@ class SpoolmanPlugin(ActionMixin, APICallMixin, SettingsMixin, InvenTreePlugin):
         stock.updateQuantity(spool["remaining_weight"])
 
     def clear_metadata(self):
-        """_summary_
-        """
+        """_summary_"""
         parts = Part.objects.filter(metadata__icontains="spoolman_id")
 
         for part in parts:
@@ -352,17 +331,17 @@ class SpoolmanPlugin(ActionMixin, APICallMixin, SettingsMixin, InvenTreePlugin):
 
         command = data.get("command")
 
+        category = None
+
+        if category_pk := self.get_setting("FILAMENT_CATEGORY_ID"):
+            try:
+                category = PartCategory.objects.get(pk=category_pk)
+            except PartCategory.DoesNotExist:
+                category = None
+
         if command == "import_all":
 
             filaments_response = self.api_call("api/v1/spool")
-
-            category = None
-
-            if category_pk := self.get_setting("FILAMENT_CATEGORY_ID"):
-                try:
-                    category = PartCategory.objects.get(pk=category_pk)
-                except PartCategory.DoesNotExist:
-                    category = None
 
             # Per ogni spool
             for spool in filaments_response:
@@ -380,7 +359,7 @@ class SpoolmanPlugin(ActionMixin, APICallMixin, SettingsMixin, InvenTreePlugin):
             raise NotImplementedError
 
         elif command == "create_part_parameter_templates":
-            self.create_part_parameters()
+            self.create_part_parameters(category)
 
         elif command == "clear_metadata":
             self.clear_metadata()

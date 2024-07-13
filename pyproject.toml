@@ -1,6 +1,6 @@
 [project]
 name = "inventree-spoolman-plugin"
-version = "0.2"
+version = "0.3.0"
 description = "Spoolman integration for InvenTree"
 readme = "README.md"
 requires-python = ">=3.8"
